@@ -1,3 +1,7 @@
 # Style-Transfer
 
-CycleGANを用いてスタイル変換を行います。自分は髪色変換(黒→白、白→黒)を行いました。互いに3000枚のデータでも50epochくらいで変化の様子は見られました。
+## CycleGAN
+Paper -> [here](https://arxiv.org/pdf/1703.10593.pdf "here")  
+
+Haircolor translation black into white or white into black. Of course, you can translate into arbitrary haircolor if you prepare.  
+Input size:128×128
