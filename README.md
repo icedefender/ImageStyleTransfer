@@ -10,5 +10,5 @@ Input size:128×128
 Paper -> [here](https://arxiv.org/abs/1711.09020 "here")
 
 Haircolor translation into multi colors(ex : white -> black, blue, pink....).   
-But, this code is not complete.  
-Concretely. ar first, haircolor translation is done correctly. But if the number of epochs are increased,  generator comes to output raw image. Making improvements are needed.
+But, this code is not completed.  
+Concretely. ar first, haircolor translation is done correctly. But if the number of epochs is increased,  generator comes to output images which are similar to raw images (Therefore, haircolor doesn't vary). Making improvements are needed.
