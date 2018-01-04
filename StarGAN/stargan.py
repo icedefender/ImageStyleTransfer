@@ -9,9 +9,15 @@ from stargan_net import Generator_ResBlock6, Discriminator
 
 xp = cuda.cupy
 
-image_out_dir = './output_color5'
+image_out_dir = './output_color4'
 if not os.path.exists(image_out_dir):
     os.mkdir(image_out_dir)
+
+def make_colorvec(nc_size):
+    vec = np.zeros(nc_size).astype(np.int32)
+    for index in range(nc_size):
+        vec[index] = index
+    return vec
 
 def set_optimizer(model, alpha, beta):
 	optimizer = optimizers.Adam(alpha = alpha, beta1 = beta)
@@ -36,15 +42,14 @@ train = np.load('target.npy').astype(np.float32)
 label = xp.load('label.npy').astype(xp.int32)
 
 epochs = 500
-batchsize = 20
-interval = 10
+batchsize = 12
+interval = 5
 lambda_adv = 1.0
 lambda_cls = 1.0
 lambda_gp = 10.0
 lambda_rec = 10.0
 Ntrain = train.shape[0]
 nc_size = 4
-interval = 10
 
 Ncolor = int(Ntrain / nc_size)
 
@@ -68,12 +73,14 @@ for epoch in range(epochs):
         y_domain = xp.zeros((batchsize, nc_size)).astype(np.int32)
         start_point = 0
         for j in range(batchsize):
+            mod = j % (batchsize/nc_size)
             if j % (batchsize/nc_size) == 0:
                 start_point += 1
             rnd = np.random.randint(Ncolor * (start_point -1) , Ncolor * (start_point))
             x[j, :,:,:] = train[rnd]
             x_domain[j] = one_hot_x(label[rnd])
-            y_domain[j] = one_hot_y(label[rnd])
+            exception = np.delete(make_colorvec(nc_size), int(label[rnd]))
+            y_domain[j] = one_hot_x(exception[j%(nc_size - 1)])
 
         x_domain_in = x_domain.astype(xp.float32)
         y_domain_in = y_domain.astype(xp.float32)
@@ -94,6 +101,9 @@ for epoch in range(epochs):
         gen_model.cleargrads()
         loss_gen.backward()
         gen_opt.update()
+
+        y_fake.unchain_backward()
+        x_fake.unchain_backward()
 
         loss_dis_adv = F.sum(-out_real) / batchsize
         loss_dis_adv += F.sum(out_fake) / batchsize
@@ -130,7 +140,7 @@ for epoch in range(epochs):
             vector = xp.array(vector).astype(xp.int32)
 
             for color in range(nc_size):
-                testimg = train[300+Ncolor*color]
+                testimg = train[205+Ncolor*color]
                 testimg_out = (testimg*127.5 + 127.5).transpose(1,2,0)
                 testimg_out = testimg_out.astype(np.uint8)
 
