@@ -1,0 +1,13 @@
+CycleGAN/output/
+CycleGAN/output_2b/
+CycleGAN/output_medium/
+CycleGAN/output_twintail/
+CycleGAN/*.model
+CycleGAN/*.npy
+StarGAN/output/
+StarGAN/output_color6/
+StarGAN/output_color7/
+StarGAN/output_synthesis
+StarGAN/output_test
+StarGAN/*.npy
+StarGAN/*.model

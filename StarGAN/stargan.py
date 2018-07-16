@@ -6,59 +6,73 @@ import chainer.functions as F
 import chainer.links as L
 from chainer import Variable, cuda, initializers, serializers, optimizers
 from stargan_net import Generator_ResBlock6, Discriminator
+import argparse
 
 xp = cuda.cupy
-
-image_out_dir = './output_color4'
-if not os.path.exists(image_out_dir):
-    os.mkdir(image_out_dir)
 
 def make_colorvec(nc_size):
     vec = np.zeros(nc_size).astype(np.int32)
     for index in range(nc_size):
         vec[index] = index
+
     return vec
+
+def make_domain(nc_size):
+    sum_list = []
+    for index in range(nc_size):
+        element = [0 for i in range(nc_size)]
+        element[index] = 1
+        sum_list.append(element)
+
+    return sum_list
 
 def set_optimizer(model, alpha, beta):
 	optimizer = optimizers.Adam(alpha = alpha, beta1 = beta)
 	optimizer.setup(model)
 	optimizer.add_hook(chainer.optimizer.WeightDecay(0.00001))
+
 	return optimizer
 
-def one_hot_x(domain_num,nc_size = 4):
+def one_hot_x(domain_num,nc_size):
     vec = xp.zeros(nc_size).astype(xp.int32)
     vec[domain_num] = 1
+
     return vec
 
-def one_hot_y(domain_num, nc_size = 4):
-    vec = xp.zeros(nc_size).astype(xp.int32)
-    domain = np.random.randint(nc_size)
-    while(domain == domain_num):
-        domain = np.random.randint(nc_size)
-    vec[domain] = 1
-    return vec
+parser = argparse.ArgumentParser(description="StarGAN")
+parser.add_argument("--epoch", default = 1000, type = int, help = "the number of epochs")
+parser.add_argument("--batchsize", default = 24, type = int, help = "batch size")
+parser.add_argument("--interval", default = 5, type = int, help = "the interval of snapshot")
+parser.add_argument("--lam_adv", default = 1.0, type = float, help = "the weight of adversarial loss")
+parser.add_argument("--lam_cls", default = 1.0, type = float, help = "the weight of classification loss")
+parser.add_argument("--lam_gp", default = 10.0, type = float, help = "the weight of gradient penalty")
+parser.add_argument("--lam_rec", default = 10.0, type = float, help = "the weight of reconstruction loss")
+parser.add_argument("--nc_size", default = 6, type = int, help = "the number of domains")
+
+args = parser.parse_args()
+epochs = args.epoch
+batchsize = args.batchsize
+interval = args.interval
+lambda_adv = args.lam_adv
+lambda_cls = args.lam_cls
+lambda_gp = args.lam_gp
+lambda_rec = args.lam_rec
+nc_size = args.nc_size
+
+image_out_dir = './output'
+if not os.path.exists(image_out_dir):
+    os.mkdir(image_out_dir)
 
 train = np.load('target.npy').astype(np.float32)
 label = xp.load('label.npy').astype(xp.int32)
-
-epochs = 500
-batchsize = 12
-interval = 5
-lambda_adv = 1.0
-lambda_cls = 1.0
-lambda_gp = 10.0
-lambda_rec = 10.0
-Ntrain = train.shape[0]
-nc_size = 4
-
+Ntrain, channels, width, height = train.shape
 Ncolor = int(Ntrain / nc_size)
 
 gen_model = Generator_ResBlock6(nc_size)
 cuda.get_device(0).use()
 gen_model.to_gpu()
 
-dis_model = Discriminator()
-cuda.get_device(0).use()
+dis_model = Discriminator(nc_size)
 dis_model.to_gpu()
 
 gen_opt = set_optimizer(gen_model, 0.0001, 0.5)
@@ -68,19 +82,21 @@ for epoch in range(epochs):
     sum_gen_loss = 0
     sum_dis_loss = 0
     for batch in range(0, Ntrain, batchsize):
-        x = np.zeros((batchsize, 3,128,128)).astype(np.float32)
+        x = np.zeros((batchsize, channels,width,height)).astype(np.float32)
         x_domain = xp.zeros((batchsize, nc_size)).astype(np.int32)
         y_domain = xp.zeros((batchsize, nc_size)).astype(np.int32)
         start_point = 0
         for j in range(batchsize):
             mod = j % (batchsize/nc_size)
+
             if j % (batchsize/nc_size) == 0:
                 start_point += 1
+
             rnd = np.random.randint(Ncolor * (start_point -1) , Ncolor * (start_point))
             x[j, :,:,:] = train[rnd]
-            x_domain[j] = one_hot_x(label[rnd])
+            x_domain[j] = one_hot_x(label[rnd], nc_size)
             exception = np.delete(make_colorvec(nc_size), int(label[rnd]))
-            y_domain[j] = one_hot_x(exception[j%(nc_size - 1)])
+            y_domain[j] = one_hot_x(exception[j%(nc_size - 1)], nc_size)
 
         x_domain_in = x_domain.astype(xp.float32)
         y_domain_in = y_domain.astype(xp.float32)
@@ -136,11 +152,11 @@ for epoch in range(epochs):
         if epoch % interval == 0 and batch == 0:
             serializers.save_npz('starGAN_generator.model',gen_model)
             serializers.save_npz('starGAN_discriminator.model',dis_model)
-            vector = [[1,0,0,0],[0,1,0,0],[0,0,1,0],[0,0,0,1]]
+            vector = make_domain(nc_size)
             vector = xp.array(vector).astype(xp.int32)
 
             for color in range(nc_size):
-                testimg = train[205+Ncolor*color]
+                testimg = train[415+Ncolor*color]
                 testimg_out = (testimg*127.5 + 127.5).transpose(1,2,0)
                 testimg_out = testimg_out.astype(np.uint8)
 
@@ -154,7 +170,7 @@ for epoch in range(epochs):
                     else:
                         pylab.subplot(nc_size,nc_size + 1,color*(nc_size+1) + index+1)
                         x = Variable(cuda.to_gpu(testimg))
-                        x = x.reshape(1,3,128,128)
+                        x = x.reshape(1,channels,width,height)
                         cls = vector[index-1].astype(xp.float32).reshape(1,nc_size)
                         with chainer.using_config('train', False):
                             y1 = gen_model(x,cls)

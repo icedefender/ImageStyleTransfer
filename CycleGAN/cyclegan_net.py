@@ -5,47 +5,48 @@ import chainer.links as L
 from chainer import Variable, cuda, Chain
 
 class Generator_ResBlock6(Chain):
-	def __init__(self):
+	def __init__(self, base = 32):
 		w = chainer.initializers.Normal(0.02)
 		super(Generator_ResBlock6,self).__init__(
-			conv1 = L.Convolution2D(3,32,7,1,3,initialW =w),
-			conv2 = L.Convolution2D(32,64,4,2,1,initialW = w),
-			conv3 = L.Convolution2D(64,128,4,2,1,initialW = w),
-			conv4_1 = L.Convolution2D(128,128,3,1,1),
-			conv4_2 = L.Convolution2D(128,128,3,1,1),
-			conv5_1 = L.Convolution2D(128,128,3,1,1),
-			conv5_2 = L.Convolution2D(128,128,3,1,1),
-			conv6_1 = L.Convolution2D(128,128,3,1,1),
-			conv6_2 = L.Convolution2D(128,128,3,1,1),
-			conv7_1 = L.Convolution2D(128,128,3,1,1),
-			conv7_2 = L.Convolution2D(128,128,3,1,1),
-			conv8_1 = L.Convolution2D(128,128,3,1,1),
-			conv8_2 = L.Convolution2D(128,128,3,1,1),
-			conv9_1 = L.Convolution2D(128,128,3,1,1),
-			conv9_2 = L.Convolution2D(128,128,3,1,1),
-			conv10 = L.Convolution2D(128,64,3,1,1,initialW = w),
-			conv11 = L.Convolution2D(64,32,3,1,1,initialW = w),
-			conv12 = L.Convolution2D(32,3,7,1,3,initialW = w),
+			conv1 = L.Convolution2D(3,base,7,1,3,initialW =w),
+			conv2 = L.Convolution2D(base,base*2,4,2,1,initialW = w),
+			conv3 = L.Convolution2D(base*2,base*4,4,2,1,initialW = w),
+			conv4_1 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv4_2 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv5_1 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv5_2 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv6_1 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv6_2 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv7_1 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv7_2 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv8_1 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv8_2 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv9_1 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv9_2 = L.Convolution2D(base*4,base*4,3,1,1),
+			conv10 = L.Convolution2D(base*4,base*2,3,1,1,initialW = w),
+			conv11 = L.Convolution2D(base*2,base,3,1,1,initialW = w),
+			conv12 = L.Convolution2D(base,3,7,1,3,initialW = w),
 
-			bnc1 = L.BatchNormalization(32),
-			bnc2 = L.BatchNormalization(64),
-			bnc3 = L.BatchNormalization(128),
-			bnc4_1 = L.BatchNormalization(128),
-			bnc4_2 = L.BatchNormalization(128),
-			bnc5_1 = L.BatchNormalization(128),
-			bnc5_2 = L.BatchNormalization(128),
-			bnc6_1 = L.BatchNormalization(128),
-			bnc6_2 = L.BatchNormalization(128),
-			bnc7_1 = L.BatchNormalization(128),
-			bnc7_2 = L.BatchNormalization(128),
-			bnc8_1 = L.BatchNormalization(128),
-			bnc8_2 = L.BatchNormalization(128),
-			bnc9_1 = L.BatchNormalization(128),
-			bnc9_2 = L.BatchNormalization(128),
-			bnc10 = L.BatchNormalization(64),
-			bnc11 = L.BatchNormalization(32),
+			bnc1 = L.BatchNormalization(base),
+			bnc2 = L.BatchNormalization(base*2),
+			bnc3 = L.BatchNormalization(base*4),
+			bnc4_1 = L.BatchNormalization(base*4),
+			bnc4_2 = L.BatchNormalization(base*4),
+			bnc5_1 = L.BatchNormalization(base*4),
+			bnc5_2 = L.BatchNormalization(base*4),
+			bnc6_1 = L.BatchNormalization(base*4),
+			bnc6_2 = L.BatchNormalization(base*4),
+			bnc7_1 = L.BatchNormalization(base*4),
+			bnc7_2 = L.BatchNormalization(base*4),
+			bnc8_1 = L.BatchNormalization(base*4),
+			bnc8_2 = L.BatchNormalization(base*4),
+			bnc9_1 = L.BatchNormalization(base*4),
+			bnc9_2 = L.BatchNormalization(base*4),
+			bnc10 = L.BatchNormalization(base*2),
+			bnc11 = L.BatchNormalization(base),
 			)
-	def forward(self,x):
+
+	def __call__(self,x):
 		h = F.relu(self.bnc1(self.conv1(x)))
 		h = F.relu(self.bnc2(self.conv2(h)))
 		h = F.relu(self.bnc3(self.conv3(h)))
@@ -70,27 +71,39 @@ class Generator_ResBlock6(Chain):
 		return h
 
 class Discriminator(Chain):
-	def __init__(self):
+	def __init__(self, base = 64):
 		w = chainer.initializers.Normal(0.02)
 		super(Discriminator,self).__init__(
-			conv1 = L.Convolution2D(3,64,4,2,1,initialW = w),
-			conv2 = L.Convolution2D(64,128,4,2,1,initialW = w),
-			conv3 = L.Convolution2D(128,256,4,2,1,initialW = w),
-			conv4 = L.Convolution2D(256,512,4,2,1,initialW = w),
-			conv5 = L.Convolution2D(512,1,initialW = w),
+			conv1 = L.Convolution2D(3,base,4,2,1,initialW = w),
+			conv2 = L.Convolution2D(base,base*2,4,2,1,initialW = w),
+			conv3 = L.Convolution2D(base*2,base*4,4,2,1,initialW = w),
+			conv4 = L.Convolution2D(base*4,base*8,4,2,1,initialW = w),
+			conv5 = L.Convolution2D(base*8,1,initialW = w),
 
-			bnc1 = L.BatchNormalization(64),
-			bnc2 = L.BatchNormalization(128),
-			bnc3 = L.BatchNormalization(256),
-			bnc4 = L.BatchNormalization(512),
+			bnc1 = L.BatchNormalization(base),
+			bnc2 = L.BatchNormalization(base*2),
+			bnc3 = L.BatchNormalization(base*4),
+			bnc4 = L.BatchNormalization(base*8),
 			)
 
-	def forward(self,x):
+	def __call__(self,x):
 		h = F.leaky_relu(self.bnc1(self.conv1(x)))
 		h = F.leaky_relu(self.bnc2(self.conv2(h)))
 		h = F.leaky_relu(self.bnc3(self.conv3(h)))
 		h = F.leaky_relu(self.bnc4(self.conv4(h)))
 		h = F.leaky_relu(self.bnc1(self.conv1(x)))
 		h = self.conv5(h)
+
+		return h
+
+class VGG(Chain):
+	def __init__(self):
+		super(VGG, self).__init__()
+
+		with self.init_scope():
+			self.base = L.VGG16Layers()
+
+	def __call__(self,x):
+		h = self.base(x, layers=['pool5'])['pool5']
 
 		return h
