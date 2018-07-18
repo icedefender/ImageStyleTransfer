@@ -13,7 +13,7 @@ CycleGANはシングルドメイン間でしか変換出来なかった。多ド
 ```bash
 $ python stargan.py --nc_size <DOMAIN>
 ```
-- `DOMAIN`に今回変換するドメインの数を指定する。デフォルトは6にする、理由は下記。
+- `DOMAIN`に今回変換するドメインの数を指定する。6以下がよい。
 
 ## Experiment
 - 論文中ではDiscriminatorとGeneratorの全層に対してInstance Normalizationを用いているが、学習が進まなかったためBatch Normalizationを用いている、
@@ -23,8 +23,8 @@ $ python stargan.py --nc_size <DOMAIN>
 ## Result
 私の環境で生成した画像を以下に示す。今回は髪色変換を行った。
 ![image](https://github.com/SerialLain3170/Style-Transfer/blob/master/StarGAN/result_2.png)
-- Input size : 128 * 128
+- 画像サイズは128 * 128
 - バッチサイズは24
 - ドメイン数は6
 - 最適化手法はAdam(α=0.0001, β1=0.5)
-- ドメインを表すベクトルは、対応するindexの要素だけ1にしている(例えばドメイン数3の場合は
+- ドメインを表すベクトルは、対応するindexの要素だけ1にしている(例えばドメイン数3の場合は(1,0,0),(0,1,0),(0,0,1))
