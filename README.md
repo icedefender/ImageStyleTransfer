@@ -1,7 +1,8 @@
 # Style-Transfer
 スタイル変換をGANを用いて行う。
 ## Dataset
-[safebooru](https://safebooru.org/)から髪色でタグ検索を行い、各ドメインずつ2000枚ずつ集めた。  
+[safebooru](https://safebooru.org/)から髪色でタグ検索を行い、各ドメイン2000枚ずつ集めた。  
+前処理としては[こちら](https://github.com/SerialLain3170/Illustration-Generator)で述べているのと同じ
 
 ## Quick Results
 ### CycleGAN
