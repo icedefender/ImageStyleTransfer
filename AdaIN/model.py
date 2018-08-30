@@ -1,7 +1,7 @@
 import chainer
 import chainer.links as L
 import chainer.functions as F
-from chainer import Chain
+from chainer import Chain,cuda
 import numpy as np
 
 xp = cuda.cupy
@@ -12,7 +12,7 @@ class CR(Chain):
         w = chainer.initializers.Normal(0.02)
         self.activation = activation
         self.sample = sample
-        with init_scope():
+        with self.init_scope():
             self.c0 = L.Convolution2D(in_ch, out_ch, 3,1,1, initialW = w)
 
     def __call__(self, x):
@@ -20,7 +20,7 @@ class CR(Chain):
         if self.activation is not None:
             h = self.activation(self.c0(h))
         if self.sample == "up":
-            h = F.upsampling2D(h,2,2)
+            h = F.unpooling_2d(h,2,2,0,cover_all=False)
         
         return h
 
@@ -28,7 +28,7 @@ class Decoder(Chain):
     def __init__(self):
         super(Decoder, self).__init__()
         w = chainer.initializers.Normal(0.02)
-        with init_scope():
+        with self.init_scope():
             self.cr0 = CR(512,256,sample="up")
             self.cr1 = CR(256,256,sample="same")
             self.cr2 = CR(256,256,sample="same")
@@ -56,23 +56,25 @@ class VGG(Chain):
     def __init__(self, last_only = False):
         super(VGG, self).__init__()
         self.last_only = last_only
-        with init_scope():
-            self.base = L.VGGLayers()
+        with self.init_scope():
+            self.base = L.VGG16Layers()
 
-    def __call__(self,x):
-        h1 = F.relu(self.base(x, layers="conv1_1")["conv1_1"])
-        h2 = F.relu(self.base(x, layers="conv2_1")["conv2_1"])
-        h3 = F.relu(self.base(x, layers="conv3_1")["conv3_1"])
-        h4 = F.relu(self.base(x, layers="conv4_1")["conv4_1"])
+    def __call__(self,x, last_only = False):
+        h1 = self.base(x, layers=["conv1_2"])["conv1_2"]
+        h2 = self.base(x, layers=["conv2_2"])["conv2_2"]
+        h3 = self.base(x, layers=["conv3_2"])["conv3_2"]
+        h4 = self.base(x, layers=["conv4_2"])["conv4_2"]
 
-        if self.last_only:
+        if last_only:
             return h4
         else:
             return h1,h2,h3,h4
 
 def calc_mean_std(feature, eps = 1e-5):
     batch, channels, _, _ = feature.shape
-    feature_var = xp.var(feature.reshape(batch, channels, -1),axis = 2) + eps
+    feature_a = feature.data
+    feature_var = xp.var(feature_a.reshape(batch, channels, -1),axis = 2) + eps
+    feature_var = chainer.as_variable(feature_var)
     feature_std = F.sqrt(feature_var).reshape(batch, channels, 1,1)
     feature_mean = F.mean(feature.reshape(batch, channels, -1), axis = 2)
     feature_mean = feature_mean.reshape(batch, channels, 1,1)
@@ -82,7 +84,12 @@ def calc_mean_std(feature, eps = 1e-5):
 def adain(content_feature, style_feature):
     shape = content_feature.shape
     style_std, style_mean = calc_mean_std(style_feature)
+    style_mean = F.broadcast_to(style_mean, shape = shape)
+    style_std = F.broadcast_to(style_std, shape = shape)
+    
     content_std, content_mean = calc_mean_std(content_feature)
-    normalized_feat = (content_feature] - content_mean) / content_std
+    content_mean = F.broadcast_to(content_mean, shape = shape)
+    content_std = F.broadcast_to(content_std, shape = shape)
+    normalized_feat = (content_feature - content_mean) / content_std
 
     return normalized_feat * style_std + style_mean
