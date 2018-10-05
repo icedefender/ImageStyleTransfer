@@ -14,3 +14,8 @@ Input size:128×128
 Paper -> [here](https://arxiv.org/abs/1711.09020 "here")  
 Input size:128×128  
 ![StarGAN](./StarGAN/result_2.png)
+
+### AdaIN
+Paper -> [here](https://arxiv.org/pdf/1703.06868.pdf)
+
+![AdaIN](https://github.com/SerialLain3170/Style-Transfer/blob/master/AdaIN/images/anime.png)
