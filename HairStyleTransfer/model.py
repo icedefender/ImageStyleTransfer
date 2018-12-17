@@ -66,95 +66,142 @@ class Generator(Chain):
         super(Generator,self).__init__()
         w=initializers.Normal(0.02)
         with self.init_scope():
-            self.c0=L.Convolution2D(3+3,base,7,1,3,initialW=w)
-            self.cbr0=CBR(base,base*2,down=True)
-            self.cbr1=CBR(base*2,base*4,down=True)
-            self.res0=ResBlock(base*4,base*4)
-            self.res1=ResBlock(base*4,base*4)
-            self.res2=ResBlock(base*4,base*4)
-            self.res3=ResBlock(base*4,base*4)
-            self.res4=ResBlock(base*4,base*4)
-            self.res5=ResBlock(base*4,base*4)
-            self.cbr2=CBR(base*4,base*2,up=True)
-            self.cbr3=CBR(base*2,base,up=True)
-            self.c1=L.Convolution2D(base,3+3,7,1,3,initialW=w)
+            self.c0_img=L.Convolution2D(3,base,7,1,3,initialW=w)
+            self.cbr0_img=CBR(base,base*2,down=True)
+            self.cbr1_img=CBR(base*2,base*4,down=True)
+            self.res0_img=ResBlock(base*4,base*4)
+            self.res1_img=ResBlock(base*4,base*4)
+            self.res2_img=ResBlock(base*4,base*4)
+            self.res3_img=ResBlock(base*4,base*4)
+            self.res4_img=ResBlock(base*4,base*4)
+            self.res5_img=ResBlock(base*4,base*4)
+            self.res6_img=ResBlock(base*4,base*4)
+            self.res7_img=ResBlock(base*4,base*4)
+            self.res8_img=ResBlock(base*4,base*4)
+            self.cbr2_img=CBR(base*8,base*2,up=True)
+            self.cbr3_img=CBR(base*2,base,up=True)
+            self.c1_img=L.Convolution2D(base,3,7,1,3,initialW=w)
 
-            self.bn0=L.BatchNormalization(base)
-            self.in0=InstanceNormalization(base)
+            self.bn0_img=L.BatchNormalization(base)
+            self.in0_img=InstanceNormalization(base)
 
-    def __call__(self,x):
+            self.c0_mask=L.Convolution2D(3,base,7,1,3,initialW=w)
+            self.cbr0_mask=CBR(base,base*2,down=True)
+            self.cbr1_mask=CBR(base*2,base*4,down=True)
+            self.res0_mask=ResBlock(base*4,base*4)
+            self.res1_mask=ResBlock(base*4,base*4)
+            self.res2_mask=ResBlock(base*4,base*4)
+            self.res3_mask=ResBlock(base*4,base*4)
+            self.res4_mask=ResBlock(base*4,base*4)
+            self.res5_mask=ResBlock(base*4,base*4)
+            self.res6_mask=ResBlock(base*4,base*4)
+            self.res7_mask=ResBlock(base*4,base*4)
+            self.res8_mask=ResBlock(base*4,base*4)
+            self.cbr2_mask=CBR(base*12,base*2,up=True)
+            self.cbr3_mask=CBR(base*2,base,up=True)
+            self.c1_mask=L.Convolution2D(base,3,7,1,3,initialW=w)
+
+            self.bn0_mask=L.BatchNormalization(base)
+            self.in0_mask=InstanceNormalization(base)
+
+    def encode_img(self,x):
         if x.shape[0]==1:
-            h=F.relu(self.in0(self.c0(x)))
+            h=F.relu(self.in0_img(self.c0_img(x)))
         else:
-            h=F.relu(self.bn0(self.c0(x)))
-        h=self.cbr0(h)
-        h=self.cbr1(h)
-        h=self.res0(h)
-        h=self.res1(h)
-        h=self.res2(h)
-        h=self.res3(h)
-        h=self.res4(h)
-        h=self.res5(h)
-        h=self.cbr2(h)
-        h=self.cbr3(h)
-        h=self.c1(h)
+            h=F.relu(self.bn0_img(self.c0_img(x)))
+        h=self.cbr0_img(h)
+        h=self.cbr1_img(h)
+        h=self.res0_img(h)
+        h=self.res1_img(h)
+        h=self.res2_img(h)
+        h=self.res3_img(h)
+        h=self.res4_img(h)
+        h=self.res5_img(h)
+        h=self.res6_img(h)
+        h=self.res7_img(h)
+        h=self.res8_img(h)
+
+        return h
+
+    def decode_img(self,x):
+        h=self.cbr2_img(x)
+        h=self.cbr3_img(h)
+        h=self.c1_img(h)
 
         return F.tanh(h)
+
+    def encode_mask(self,x):
+        if x.shape[0]==1:
+            h=F.relu(self.in0_mask(self.c0_mask(x)))
+        else:
+            h=F.relu(self.bn0_mask(self.c0_mask(x)))
+        h=self.cbr0_mask(h)
+        h=self.cbr1_mask(h)
+        h=self.res0_mask(h)
+        h=self.res1_mask(h)
+        h=self.res2_mask(h)
+        h=self.res3_mask(h)
+        h=self.res4_mask(h)
+        h=self.res5_mask(h)
+        h=self.res6_mask(h)
+        h=self.res7_mask(h)
+        h=self.res8_mask(h)
+
+        return h
+
+    def decode_mask(self,x):
+        h=self.cbr2_mask(x)
+        h=self.cbr3_mask(h)
+        h=self.c1_mask(h)
+
+        return F.tanh(h)
+
+    def __call__(self,img,mask):
+        enc_img = self.encode_img(img)
+        enc_mask = self.encode_mask(mask)
+
+        latent_img = F.concat([enc_img, enc_mask])
+        latent_mask = F.concat([enc_img, enc_mask, enc_mask])
+
+        dec_img = self.decode_img(latent_img)
+        dec_mask = self.decode_mask(latent_mask)
+
+        return dec_img, dec_mask
 
 class Discriminator(Chain):
     def __init__(self,base=32):
         w = initializers.Normal(0.02)
         super(Discriminator,self).__init__()
         with self.init_scope():
-            self.cbr0=CBR(6,base,down=True,activation=F.leaky_relu)
-            self.cbr1=CBR(base,base*2,down=True,activation=F.leaky_relu)
-            #self.cbr1_1=CBR(base*2,base*2,activation=F.leaky_relu)
-            self.cbr2=CBR(base*2,base*4,down=True,activation=F.leaky_relu)
-            #self.cbr2_1=CBR(base*4,base*4,activation=F.leaky_relu)
-            self.cbr3=CBR(base*4,base*8,down=True,activation=F.leaky_relu)
-            #self.cbr3_1=CBR(base*8,base*8,activation=F.leaky_relu)
-            self.cout=L.Convolution2D(base*8,1,3,1,1,initialW=w)
+            self.cbr0_img=CBR(3,base,down=True,activation=F.leaky_relu)
+            self.cbr1_img=CBR(base,base*2,down=True,activation=F.leaky_relu)
+            self.cbr2_img=CBR(base*2,base*4,down=True,activation=F.leaky_relu)
+            
+            self.cbr0_mask=CBR(3,base,down=True,activation=F.leaky_relu)
+            self.cbr1_mask=CBR(base,base*2,down=True,activation=F.leaky_relu)
+            self.cbr2_mask=CBR(base*2,base*4,down=True,activation=F.leaky_relu)
 
-    def __call__(self,x):
-        h=self.cbr0(x)
-        h=self.cbr1(h)
-        #h=self.cbr1_1(h)
-        h=self.cbr2(h)
-        #h=self.cbr2_1(h)
-        h=self.cbr3(h)
-        #h=self.cbr3_1(h)
-        h=self.cout(h)
+            self.cbr3=CBR(base*8,base*16,down=True,activation=F.leaky_relu)
+            self.cout=L.Convolution2D(base*16,1,3,1,1,initialW=w)
+
+    def encode_img(self,x):
+        h=self.cbr0_img(x)
+        h=self.cbr1_img(h)
+        h=self.cbr2_img(h)
 
         return h
 
-class UNet(Chain):
-    def __init__(self,base=64):
-        super(UNet,self).__init__()
-        w=initializers.Normal(0.02)
-        with self.init_scope():
-            self.c0=L.Convolution2D(6,base,3,1,1,initialW=w)
-            self.cbr0=CBR(base,base*2,down=True,predict=True)
-            self.cbr1=CBR(base*2,base*4,down=True,predict=True)
-            self.cbr2=CBR(base*4,base*8,down=True,predict=True)
-            self.cbr3=CBR(base*8,base*8,down=True,predict=True)
-            self.cbr4=CBR(base*16,base*8,up=True,predict=True)
-            self.cbr5=CBR(base*16,base*4,up=True,predict=True)
-            self.cbr6=CBR(base*8,base*2,up=True,predict=True)
-            self.cbr7=CBR(base*4,base*1,up=True,predict=True)
-            self.c1=L.Convolution2D(base*2,3,3,1,1,initialW=w)
+    def encode_mask(self,x):
+        h=self.cbr0_mask(x)
+        h=self.cbr1_mask(h)
+        h=self.cbr2_mask(h)
 
-            self.bn0=InstanceNormalization(base)
+        return h
 
-    def __call__(self,x):
-        h1=F.relu(self.bn0(self.c0(x)))
-        h2=self.cbr0(h1)
-        h3=self.cbr1(h2)
-        h4=self.cbr2(h3)
-        h5=self.cbr3(h4)
-        h=self.cbr4(F.concat([h5,h5]))
-        h=self.cbr5(F.concat([h4,h]))
-        h=self.cbr6(F.concat([h3,h]))
-        h=self.cbr7(F.concat([h2,h]))
-        h=self.c1(F.concat([h1,h]))
+    def __call__(self,img,mask):
+        enc_img = self.encode_img(img)
+        enc_mask = self.encode_mask(mask)
+        h = self.cbr3(F.concat([enc_img, enc_mask]))
+        h = self.cout(h)
 
-        return F.tanh(h)
+        return h

@@ -26,8 +26,8 @@ parser.add_argument("--batchsize",default=16,type=int,help="batch size")
 parser.add_argument("--testsize",default=4,type=int,help="test size")
 parser.add_argument("--cw",default=10.0,type=float,help="the weight of cycle loss")
 parser.add_argument("--iw",default=10.0,type=float,help="the weigt of identity loss")
-parser.add_argument("--Ntrain",default=900,type=int,help="the number of training images")
-parser.add_argument("--interval",default=1,type=int,help="the interval of snapshot")
+parser.add_argument("--Ntrain",default=850,type=int,help="the number of training images")
+parser.add_argument("--interval",default=5,type=int,help="the interval of snapshot")
 parser.add_argument("--size",default=128,type=int,help="image width")
 parser.add_argument("--cluster",default=2,type=int,help="the number of clusters")
 
@@ -45,41 +45,46 @@ cluster=args.cluster
 
 x_path="/medium/"
 y_path="/twintail/"
-x_list=os.listdir(x_path)
-y_list=os.listdir(y_path)
+x_tag_path="/label/medium/"
+y_tag_path="/label/twin/"
+x_list=os.listdir(x_tag_path)
+y_list=os.listdir(y_tag_path)
+Nx = len(x_list) - 50
+Ny = len(y_list)
 
 test_box=[]
 binary_box=[]
 for _ in range(testsize):
-    rnd=np.random.randint(Ntrain,Ntrain+50)
+    rnd=np.random.randint(Nx,Nx+50)
+    filename=x_tag_path+x_list[rnd]
+    binary=prepare_dataset(filename,size,cluster)
     filename=x_path+x_list[rnd]
-    image,binary=prepare_dataset(filename,size,cluster)
+    image=prepare_dataset(filename,size,cluster)
     test_box.append(image)
     binary_box.append(binary)
 
-test_twin=chainer.as_variable(xp.array(test_box).astype(xp.float32))
-binary=chainer.as_variable(xp.array(binary_box).astype(xp.float32))
-test_twin=F.concat([test_twin,binary])
+test_img=chainer.as_variable(xp.array(test_box).astype(xp.float32))
+test_mask=chainer.as_variable(xp.array(binary_box).astype(xp.float32))
 
 outdir="./output"
 if not os.path.exists(outdir):
     os.mkdir(outdir)
 
-generator_xy=Generator()
+generator_xy = Generator()
 generator_xy.to_gpu()
-gen_xy_opt=set_optimizer(generator_xy)
+gen_xy_opt = set_optimizer(generator_xy)
 
-generator_yx=Generator()
+generator_yx = Generator()
 generator_yx.to_gpu()
-gen_yx_opt=set_optimizer(generator_yx)
+gen_yx_opt = set_optimizer(generator_yx)
 
-discriminator_xy=Discriminator()
+discriminator_xy = Discriminator()
 discriminator_xy.to_gpu()
-dis_xy_opt=set_optimizer(discriminator_xy)
+dis_xy_opt = set_optimizer(discriminator_xy)
 
-discriminator_yx=Discriminator()
+discriminator_yx = Discriminator()
 discriminator_yx.to_gpu()
-dis_yx_opt=set_optimizer(discriminator_yx)
+dis_yx_opt = set_optimizer(discriminator_yx)
 
 for epoch in range(epochs):
     sum_dis_loss=0
@@ -90,37 +95,43 @@ for epoch in range(epochs):
         y_box=[]
         y_binary_box=[]
         for index in range(batchsize):
-            rnd=np.random.randint(1,Ntrain)
+            rnd=np.random.randint(1,Nx)
+            aug=np.random.randint(2)
+            filename=x_tag_path+x_list[rnd]
+            binary=prepare_dataset(filename,size,aug)
             filename=x_path+x_list[rnd]
-            image,binary=prepare_dataset(filename,size,cluster)
+            image=prepare_dataset(filename,size,aug)
             x_box.append(image)
             x_binary_box.append(binary)
-            rnd=np.random.randint(1,Ntrain)
+            rnd=np.random.randint(1,Ny)
+            aug=np.random.randint(2)
+            filename=y_tag_path+y_list[rnd]
+            binary=prepare_dataset(filename,size,aug)
             filename=y_path+y_list[rnd]
-            image,binary=prepare_dataset(filename,size,cluster)
+            image=prepare_dataset(filename,size,aug)
             y_box.append(image)
             y_binary_box.append(binary)
 
-        x=chainer.as_variable(xp.array(x_box).astype(xp.float32))
-        x_bianry=chainer.as_variable(xp.array(x_binary_box).astype(xp.float32))
-        x=F.concat([x,x_bianry])
-        y=chainer.as_variable(xp.array(y_box).astype(xp.float32))
-        y_bianry=chainer.as_variable(xp.array(y_binary_box).astype(xp.float32))
-        y=F.concat([y,y_bianry])
+        x_img=chainer.as_variable(xp.array(x_box).astype(xp.float32))
+        x_mask=chainer.as_variable(xp.array(x_binary_box).astype(xp.float32))
+        y_img=chainer.as_variable(xp.array(y_box).astype(xp.float32))
+        y_mask=chainer.as_variable(xp.array(y_binary_box).astype(xp.float32))
 
-        x_y=generator_xy(x)
-        y_x=generator_yx(y)
+        x_y_img, x_y_mask=generator_xy(x_img, x_mask)
+        y_x_img, y_x_mask=generator_yx(y_img, y_mask)
 
-        y_real=discriminator_xy(y)
-        y_fake=discriminator_xy(x_y)
-        x_real=discriminator_yx(x)
-        x_fake=discriminator_yx(y_x)
+        y_real=discriminator_xy(y_img, y_mask)
+        y_fake=discriminator_xy(x_y_img, x_y_mask)
+        x_real=discriminator_yx(x_img, x_mask)
+        x_fake=discriminator_yx(y_x_img, y_x_mask)
 
         dis_loss_y=F.mean(F.softplus(-y_real)) + F.mean(F.softplus(y_fake))
         dis_loss_x=F.mean(F.softplus(-x_real)) + F.mean(F.softplus(x_fake))
 
-        y_fake.unchain_backward()
-        x_fake.unchain_backward()
+        x_y_img.unchain_backward()
+        x_y_mask.unchain_backward()
+        y_x_img.unchain_backward()
+        y_x_mask.unchain_backward()
 
         discriminator_xy.cleargrads()
         dis_loss_y.backward()
@@ -132,23 +143,26 @@ for epoch in range(epochs):
         dis_yx_opt.update()
         dis_loss_x.unchain_backward()
 
-        x_y=generator_xy(x)
-        x_y_x=generator_yx(x_y)
+        x_y_img, x_y_mask=generator_xy(x_img, x_mask)
+        x_y_x_img, x_y_x_mask=generator_yx(x_y_img, x_y_mask)
 
-        y_x=generator_yx(y)
-        y_x_y=generator_xy(y_x)
+        y_x_img, y_x_mask=generator_yx(y_img, y_mask)
+        y_x_y_img, y_x_y_mask=generator_xy(y_x_img, y_x_mask)
 
-        y_fake=discriminator_xy(x_y)
-        x_fake=discriminator_yx(y_x)
+        y_fake=discriminator_xy(x_y_img, x_y_mask)
+        x_fake=discriminator_yx(y_x_img, y_x_mask)
 
         gen_loss=F.mean(F.softplus(-y_fake))
         gen_loss+=F.mean(F.softplus(-x_fake))
 
-        cycle_loss_x=F.mean_absolute_error(x,x_y_x)
-        cycle_loss_y=F.mean_absolute_error(y,y_x_y)
+        cycle_loss_x=F.mean_absolute_error(x_img,x_y_x_img) + F.mean_absolute_error(x_mask, x_y_x_mask)
+        cycle_loss_y=F.mean_absolute_error(y_img,y_x_y_img) + F.mean_absolute_error(y_mask, y_x_y_mask)
 
-        identity_loss_x=F.mean_absolute_error(x_y,x)
-        identity_loss_y=F.mean_absolute_error(y_x,y)
+        x_idt_img, x_idt_mask = generator_yx(x_img, x_mask)
+        y_idt_img, y_idt_mask = generator_xy(y_img, y_mask)
+
+        identity_loss_x=F.mean_absolute_error(x_idt_img,x_img) + F.mean_absolute_error(x_idt_mask, x_mask)
+        identity_loss_y=F.mean_absolute_error(y_idt_img,y_img) + F.mean_absolute_error(y_idt_mask, y_mask)
 
         gen_loss+=cycle_weight*(cycle_loss_x+cycle_loss_y) + identity_weight*(identity_loss_x+identity_loss_y)
 
@@ -163,33 +177,43 @@ for epoch in range(epochs):
         sum_gen_loss=gen_loss.data.get()
 
         if epoch%interval==0 and batch==0:
+            pylab.rcParams['figure.figsize'] = (16.0,16.0)
+            pylab.clf()
+
             serializers.save_npz("generator_xy.model",generator_xy)
             serializers.save_npz("generator_yx.model",generator_yx)
+
             with chainer.using_config("train",False):
-                y=generator_xy(test_twin)
-            y=y.data.get()
-            test=test_twin.data.get()
-            for i in range(testsize):
-                tmp=np.clip(test[i][0:3]*127.5+127.5,0,255).transpose(1,2,0).astype(np.uint8)
-                pylab.subplot(testsize,4,4*i+1)
-                pylab.imshow(tmp)
-                pylab.axis("off")
-                pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
-                tmp=np.clip(test[i][3:6]*127.5+127.5,0,255).transpose(1,2,0).astype(np.uint8)
-                pylab.subplot(testsize,4,4*i+2)
-                pylab.imshow(tmp)
-                pylab.axis("off")
-                pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
-                tmp=np.clip(y[i][0:3]*127.5+127.5,0,255).transpose(1,2,0).astype(np.uint8)
-                pylab.subplot(testsize,4,4*i+3)
-                pylab.imshow(tmp)
-                pylab.axis("off")
-                pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
-                tmp=np.clip(y[i][3:6]*127.5+127.5,0,255).transpose(1,2,0).astype(np.uint8)
-                pylab.subplot(testsize,4,4*i+4)
-                pylab.imshow(tmp)
-                pylab.axis("off")
-                pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
+                for i in range(testsize):
+                    y_img, y_mask=generator_xy(test_img[i].reshape(1,3,128,128), test_mask[i].reshape(1,3,128,128))
+                    y_img_t=y_img.data.get()
+                    y_mask_t=y_mask.data.get()
+                    t_img=test_img[i].data.get()
+                    t_mask=test_mask[i].data.get()
+
+                    y_img.unchain_backward()
+                    y_mask.unchain_backward()
+
+                    tmp=(np.clip(t_img*127.5+127.5,0,255)).transpose(1,2,0).astype(np.uint8)
+                    pylab.subplot(testsize,4,4*i+1)
+                    pylab.imshow(tmp)
+                    pylab.axis("off")
+                    pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
+                    tmp=(np.clip(t_mask*127.5+127.5,0,255)).transpose(1,2,0).astype(np.uint8)
+                    pylab.subplot(testsize,4,4*i+2)
+                    pylab.imshow(tmp)
+                    pylab.axis("off")
+                    pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
+                    tmp=np.clip(y_img_t[0]*127.5+127.5,0,255).transpose(1,2,0).astype(np.uint8)
+                    pylab.subplot(testsize,4,4*i+3)
+                    pylab.imshow(tmp)
+                    pylab.axis("off")
+                    pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
+                    tmp=np.clip(y_mask_t[0]*127.5+127.5,0,255).transpose(1,2,0).astype(np.uint8)
+                    pylab.subplot(testsize,4,4*i+4)
+                    pylab.imshow(tmp)
+                    pylab.axis("off")
+                    pylab.savefig("%s/visualize_%d.png"%(outdir,epoch))
 
     print("epoch:{}".format(epoch))
     print("Discriminator loss:{}".format(sum_dis_loss/iterations))
