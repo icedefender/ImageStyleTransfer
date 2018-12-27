@@ -24,7 +24,7 @@ class CBR(Chain):
             self.in0=InstanceNormalization(out_ch)
 
     def __call__(self,x):
-        if x.shape[0] == 1:
+        if x.shape[0] == 3:
             if self.up:
                 h=F.unpooling_2d(x,2,2,0,cover_all=False)
                 h=self.activation(self.in0(self.cpara(h)))
@@ -85,7 +85,7 @@ class Generator(Chain):
             self.bn0_img=L.BatchNormalization(base)
             self.in0_img=InstanceNormalization(base)
 
-            self.c0_mask=L.Convolution2D(3,base,7,1,3,initialW=w)
+            self.c0_mask=L.Convolution2D(1,base,7,1,3,initialW=w)
             self.cbr0_mask=CBR(base,base*2,down=True)
             self.cbr1_mask=CBR(base*2,base*4,down=True)
             self.res0_mask=ResBlock(base*4,base*4)
@@ -99,13 +99,13 @@ class Generator(Chain):
             self.res8_mask=ResBlock(base*4,base*4)
             self.cbr2_mask=CBR(base*12,base*2,up=True)
             self.cbr3_mask=CBR(base*2,base,up=True)
-            self.c1_mask=L.Convolution2D(base,3,7,1,3,initialW=w)
+            self.c1_mask=L.Convolution2D(base,1,7,1,3,initialW=w)
 
             self.bn0_mask=L.BatchNormalization(base)
             self.in0_mask=InstanceNormalization(base)
 
     def encode_img(self,x):
-        if x.shape[0]==1:
+        if x.shape[0]==3:
             h=F.relu(self.in0_img(self.c0_img(x)))
         else:
             h=F.relu(self.bn0_img(self.c0_img(x)))
@@ -131,7 +131,7 @@ class Generator(Chain):
         return F.tanh(h)
 
     def encode_mask(self,x):
-        if x.shape[0]==1:
+        if x.shape[0]==3:
             h=F.relu(self.in0_mask(self.c0_mask(x)))
         else:
             h=F.relu(self.bn0_mask(self.c0_mask(x)))
@@ -154,7 +154,7 @@ class Generator(Chain):
         h=self.cbr3_mask(h)
         h=self.c1_mask(h)
 
-        return F.tanh(h)
+        return F.sigmoid(h)
 
     def __call__(self,img,mask):
         enc_img = self.encode_img(img)
@@ -177,7 +177,7 @@ class Discriminator(Chain):
             self.cbr1_img=CBR(base,base*2,down=True,activation=F.leaky_relu)
             self.cbr2_img=CBR(base*2,base*4,down=True,activation=F.leaky_relu)
             
-            self.cbr0_mask=CBR(3,base,down=True,activation=F.leaky_relu)
+            self.cbr0_mask=CBR(1,base,down=True,activation=F.leaky_relu)
             self.cbr1_mask=CBR(base,base*2,down=True,activation=F.leaky_relu)
             self.cbr2_mask=CBR(base*2,base*4,down=True,activation=F.leaky_relu)
 

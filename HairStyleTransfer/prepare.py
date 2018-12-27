@@ -15,17 +15,27 @@ def kmeans(image,cluster=2):
 
     return binary
 
-def prepare_dataset(filename,size=128,cluster=2):
+def prepare_dataset(filename,size,aug):
     image=cv.imread(filename)
     if image is not None:
         image=cv.resize(image,(size,size),interpolation=cv.INTER_CUBIC)
-        binary=kmeans(image,cluster)
         image=image[:,:,::-1]
+        if aug == 0:
+            image = image[:,::-1,:]
         image=image.transpose(2,0,1)
         image=(image-127.5) / 127.5
 
-        binary=binary[:,:,::-1]
-        binary=binary.transpose(2,0,1)
-        binary=(binary-127.5) / 127.5
+        return image
 
-        return image,binary
+def prepare_mask(filename,size,aug):
+    image=cv.imread(filename)
+    if image is not None:
+        image=cv.resize(image,(size,size),interpolation=cv.INTER_CUBIC)
+        image=image[:,:,::-1]
+        mask=image[:,:,2].reshape(128,128,1)
+        if aug == 0:
+            mask = mask[:,::-1,:]
+        mask=mask.transpose(2,0,1)
+        mask=mask/255.0
+
+        return mask
