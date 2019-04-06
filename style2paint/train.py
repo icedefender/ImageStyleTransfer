@@ -7,7 +7,7 @@ import numpy as np
 import pylab
 import argparse
 from model import VGG, Decoder_g1, Decoder_g2, UNet, Discriminator, Grayscale
-from prepare  import prepare_dataset, prepare_dataset_vgg
+from prepare  import prepare_dataset
 
 def set_optimizer(model, alpha = 0.0002, beta = 0.5):
     optimizer = optimizers.Adam(alpha = alpha, beta1 = beta)
@@ -27,8 +27,8 @@ if not os.path.exists(out_dir):
 
 parser = argparse.ArgumentParser(description="anime style transfer")
 parser.add_argument("--epoch", default=1000, help = "the number of epochs")
-parser.add_argument("--batchsize", default = 2, type = int,help = "batch size")
-parser.add_argument("--testsize", default  = 4, help = "test size")
+parser.add_argument("--batchsize", default = 4, type = int,help = "batch size")
+parser.add_argument("--testsize", default  = 5, help = "test size")
 parser.add_argument("--lam1", default = 10.0, type = float, help = "weight of the content loss")
 parser.add_argument("--lamg1", default = 3.0, type = float, help = "weight of the g1 content loss")
 parser.add_argument("--lamg2", default = 9.0, type = float, help = "weight of the g2 loss")
@@ -43,15 +43,43 @@ lambda_g1 = args.lamg1
 lambda_g2 = args.lamg2
 interval = args.interval
 
+outdir = './output'
+if not os.path.exists(outdir):
+    os.mkdir(outdir)
+
 #x_train = np.load("../Pix2pix/line.npy").astype(np.float32)
 #t_train = np.load("../Pix2pix/trim.npy").astype(np.float32)
 #Ntrain, channels, width, height = x_train.shape
-line_path = "/usr/MachineLearning/Dataset/line/train_lin/"
-color_path = "/usr/MachineLearning/Dataset/trim/train_trim/"
-Ntrain = 5000
+line_path = "./Dataset/line/face_getchu/"
+color_path = "./Dataset/face_getchu_2/"
+line_list = os.listdir(line_path)
+color_list = os.listdir(color_path)
+Ntrain = 22000
 channels = 3
 width = 128
 height = 128
+
+line_box = []
+color_box = []
+color_vgg_box = []
+for index in range(testsize):
+    rnd = np.random.randint(Ntrain + 1, Ntrain + 100)
+    filename = line_list[rnd]
+    _, line, _ = prepare_dataset(line_path+filename, color_path + filename)
+    rnd = np.random.randint(Ntrain + 1, Ntrain + 100)
+    filename = line_list[rnd]
+    color, _, color_vgg = prepare_dataset(line_path+filename, color_path + filename)
+    color_vgg_box.append(color_vgg)
+    line_box.append(line)
+    color_box.append(color)
+
+x = xp.array(line_box).astype(xp.float32)
+t = xp.array(color_box).astype(xp.float32)
+t_vgg = xp.array(color_vgg_box).astype(xp.float32)
+
+x_test = chainer.as_variable(x)
+t_test = chainer.as_variable(t)
+t_vgg_test = chainer.as_variable(t_vgg)
 
 vgg = VGG()
 vgg.to_gpu()
@@ -81,28 +109,16 @@ for epoch in range(epochs):
     sum_unet_loss = 0
     sum_dis_loss = 0
     for batch in range(0, Ntrain, batchsize):
-        x = xp.zeros((batchsize, channels, width, height), dtype = xp.float32)
-        t = xp.zeros((batchsize, channels, width, height), dtype = xp.float32)
         line_box = []
         color_box = []
         color_vgg_box = []
-
         for index in range(batchsize):
-            rnd = np.random.randint(Ntrain)
-            line_name =  "trim_free_" + str(rnd) + ".png"
-            while line_name == "trim_free_0.png":
-                rnd = np.random.randint(Ntrain)
-                line_name =  "trim_free_" + str(rnd) + ".png"
-            line = prepare_dataset(line_path + line_name)
-            line_box.append(line)
-
-            color_name =  "trim_free_" + str(rnd) + ".png"
-            color = prepare_dataset(color_path + color_name)
-            color_box.append(color)
-
-            color_vgg_name =  "trim_free_" + str(rnd) + ".png"
-            color_vgg = prepare_dataset_vgg(color_path + color_vgg_name)
+            rnd = np.random.randint(1,Ntrain)
+            filename = line_list[rnd]
+            color, line, color_vgg = prepare_dataset(line_path+filename, color_path + filename)
             color_vgg_box.append(color_vgg)
+            line_box.append(line)
+            color_box.append(color)
 
         x = xp.array(line_box).astype(xp.float32)
         t = xp.array(color_box).astype(xp.float32)
@@ -113,22 +129,20 @@ for epoch in range(epochs):
         t_vgg = chainer.as_variable(t_vgg)
 
         z_tag, z = vgg(t_vgg)
-
         y, _, _ = unet(x,z)
+        y.unchain_backward()
 
         y_cls = discriminator(y)
         t_cls = discriminator(t)
-        t_cls = t_cls + xp.ones_like(t_cls) - z_tag
+        #t_cls = t_cls + xp.ones_like(t_cls) - z_tag
 
         fake_loss = F.sum(F.softplus(y_cls)) / batchsize
         real_loss = F.sum(F.softplus(-t_cls)) / batchsize
         loss_dis = fake_loss + real_loss
 
         discriminator.cleargrads()
-        vgg.cleargrads()
         loss_dis.backward()
         dis_opt.update()
-        vgg_opt.update()
         loss_dis.unchain_backward()
 
         _, z = vgg(t_vgg)
@@ -150,7 +164,6 @@ for epoch in range(epochs):
         vgg.cleargrads()
         decoder_g1.cleargrads()
         decoder_g2.cleargrads()
-
         unet_loss.backward()
         unet_opt.update()
         g1_opt.update()
@@ -161,7 +174,53 @@ for epoch in range(epochs):
         sum_dis_loss += loss_dis.data.get()
         sum_unet_loss += unet_loss.data.get()
 
-    serializers.save_npz("unet.model", unet)
+        if batch == 0:
+            serializers.save_npz("unet.model", unet)
+            with chainer.using_config('train', False):
+                _, z = vgg(t_vgg_test)
+                y, y1, y2 = unet(x_test, z)
+                y1 = decoder_g1(y1)
+                y2 = decoder_g2(y2)
+                y1 = F.tile(y1, (1,3,1,1))
+                y.unchain_backward()
+                y1.unchain_backward()
+                y2.unchain_backward()
+            x_t = x_test.data.get()
+            t_t = t_test.data.get()
+            y = y.data.get()
+            y1 = y1.data.get()
+            y2 = y2.data.get()
+
+            pylab.rcParams['figure.figsize'] = (16.0,16.0)
+            pylab.clf()
+
+            for i_ in range(testsize):
+                tmp = (np.clip((x_t[i_,:,:,:])*127.5 + 127.5, 0, 255)).transpose(1,2,0).astype(np.uint8)
+                pylab.subplot(testsize,5,5*i_+1)
+                pylab.imshow(tmp)
+                pylab.axis('off')
+                pylab.savefig('%s/visualize_%d.png'%(outdir, epoch))
+                tmp = (np.clip((t_t[i_,:,:,:])*127.5 + 127.5, 0, 255)).transpose(1,2,0).astype(np.uint8)
+                pylab.subplot(testsize,5,5*i_+2)
+                pylab.imshow(tmp)
+                pylab.axis('off')
+                pylab.savefig('%s/visualize_%d.png'%(outdir, epoch))
+                tmp = (np.clip((y1[i_,:,:,:])*127.5 + 127.5, 0, 255)).transpose(1,2,0).astype(np.uint8)
+                pylab.subplot(testsize,5,5*i_+3)
+                pylab.imshow(tmp)
+                pylab.axis('off')
+                pylab.savefig('%s/visualize_%d.png'%(outdir, epoch))
+                tmp = (np.clip((y2[i_,:,:,:])*127.5 + 127.5, 0, 255)).transpose(1,2,0).astype(np.uint8)
+                pylab.subplot(testsize,5,5*i_+4)
+                pylab.imshow(tmp)
+                pylab.axis('off')
+                pylab.savefig('%s/visualize_%d.png'%(outdir, epoch))
+                tmp = (np.clip((y[i_,:,:,:])*127.5 + 127.5, 0, 255)).transpose(1,2,0).astype(np.uint8)
+                pylab.subplot(testsize,5,5*i_+5)
+                pylab.imshow(tmp)
+                pylab.axis('off')
+                pylab.savefig('%s/visualize_%d.png'%(outdir, epoch))
+
     print("epoch : {}".format(epoch))
     print("UNet loss : {}".format(sum_unet_loss / Ntrain))
     print("Discriminator loss : {}".format(sum_dis_loss / Ntrain))
