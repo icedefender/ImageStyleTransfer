@@ -8,12 +8,12 @@ class VGG(Chain):
     def __init__(self):
         super(VGG,self).__init__()
         with self.init_scope():
-            self.base = L.VGG16Layers()
+            self.base = L.VGG19Layers()
 
     def __call__(self, x):
-        h = self.base(x, layers=["conv4_3"])["conv4_3"]
+        h2 = self.base(x, layers=["conv4_4"])["conv4_4"]
 
-        return h
+        return [h2]
 
 class CCBR_down(Chain):
     def __init__(self, in_ch, out_ch):
@@ -98,7 +98,7 @@ class Generator(Chain):
         h = self.res4(h)
         h = self.res5(h)
         h = self.res6(h)
-        h = self.res7(h)
+        #h = self.res7(h)
         h = self.up0(h)
         h = self.up1(h)
         h = self.c1(h)

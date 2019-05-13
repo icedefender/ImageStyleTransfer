@@ -9,9 +9,6 @@ import pylab
 from model import Discriminator, Generator, VGG
 from prepare import prepare_trim_content, prepare_trim_style
 
-def BCE(x,t):
-    return F.average(x - x * t + F.softplus(-x))
-
 xp = cuda.cupy
 cuda.get_device(0).use()
 
@@ -28,18 +25,22 @@ def calc_loss(fake, real):
 
     return sum_loss
 
-outdir = "./output/"
+outdir = "./output_pretrain256/"
 if not os.path.exists(outdir):
     os.mkdir(outdir)
+
+model_dir = "./model/"
+if not os.path.exists(model_dir):
+    os.mkdir(model_dir)
 
 parser = argparse.ArgumentParser(description="cartoongan")
 parser.add_argument("--epochs",default=1000,type=int,help="the number of epochs")
 parser.add_argument("--batchsize",default=8,type=int,help="batchsize")
 parser.add_argument("--interval",default=1,type=int,help="the interval of snapshot")
 parser.add_argument("--cw",default=10.0,type=float,help="the weights of content loss")
-parser.add_argument("--Ntrain", default=36000, type = int, help = "Ntrain")
-parser.add_argument("--Nstyle",default = 5000, type = int, help = "Nstyle")
-parser.add_argument("--testsize", default = 2, type = int, help = "testsize")
+parser.add_argument("--Ntrain", default=37000, type = int, help = "Ntrain")
+parser.add_argument("--Nstyle",default = 1990, type = int, help = "Nstyle")
+parser.add_argument("--testsize", default = 4, type = int, help = "testsize")
 
 args=parser.parse_args()
 epochs = args.epochs
@@ -52,10 +53,8 @@ testsize = args.testsize
 
 image_path = "./Dataset/coco/test2015/"
 image_list = os.listdir(image_path)
-style_path = "./Dataset/movie/cell/"
-style_list = os.listdir(style_path)
-Nstyle = len(style_list)
-smooth_path = "./Dataset/edge_smooth/cell/"
+style_path = "./Dataset/background/bg/"
+smooth_path = "./Dataset/edge_smooth/background/"
 
 test_box = []
 for _ in range(testsize):
@@ -68,13 +67,8 @@ x_test = xp.array(test_box).astype(xp.float32)
 x_test = chainer.as_variable(x_test)
 
 generator = Generator()
-serializers.load_npz("./model/generator_pretrain_9.model", generator)
 generator.to_gpu()
 gen_opt = set_optimizer(generator)
-
-discriminator = Discriminator()
-discriminator.to_gpu()
-dis_opt = set_optimizer(discriminator)
 
 vgg = VGG()
 vgg.to_gpu()
@@ -87,73 +81,43 @@ for epoch in range(epochs):
     for batch in range(0, 2000, batchsize):
         image_box = []
         style_box = []
-        smooth_box = []
         for i in range(batchsize):
             rnd1 = np.random.randint(Ntrain)
             image_name = image_path + image_list[rnd1]
             image,_,_ = prepare_trim_content(image_name)
             image_box.append(image)
 
-            rnd2 = np.random.randint(Nstyle)
-            style_name = style_path + style_list[rnd2]
-            style, width, height = prepare_trim_content(style_name)
-            style_box.append(style)
-
-            smooth_name = smooth_path + style_list[rnd2]
-            smooth_edge = prepare_trim_style(smooth_name, width, height)
-            smooth_box.append(smooth_edge)
-        
         x = xp.array(image_box).astype(xp.float32)
-        t = xp.array(style_box).astype(xp.float32)
-        s = xp.array(smooth_box).astype(xp.float32)
-
         x = chainer.as_variable(x)
-        t = chainer.as_variable(t)
-        s = chainer.as_variable(s)
 
         y = generator(x)
-        y_dis = discriminator(y)
-        s_dis = discriminator(s)
-        t_dis = discriminator(t)
-        y.unchain_backward()
-        dis_loss = F.mean(F.softplus(y_dis)) + F.mean(F.softplus(s_dis)) + F.mean(F.softplus(-t_dis))
-
-        discriminator.cleargrads()
-        dis_loss.backward()
-        dis_opt.update()
-        dis_loss.unchain_backward()
-
-        y = generator(x)
-        y_dis = discriminator(y)
-        gen_loss = F.mean(F.softplus(-y_dis))
         vgg_x = vgg(x)
         vgg_y = vgg(y)
         content_loss = calc_loss(vgg_x , vgg_y)
-        gen_loss += content_weight * content_loss
+        gen_loss = content_weight * content_loss
 
-        generator.cleargrads()
         vgg.cleargrads()
+        generator.cleargrads()
         gen_loss.backward()
         gen_opt.update()
         vgg_opt.update()
         gen_loss.unchain_backward()
 
-        sum_dis_loss += dis_loss.data.get()
         sum_gen_loss += gen_loss.data.get()
 
         if epoch % interval == 0 and batch == 0:
-            serializers.save_npz("generator.model", generator)
+            serializers.save_npz("./model/generator_pretrain_{}.model".format(epoch), generator)
             with chainer.using_config("train", False):
                 y_test = generator(x_test)
             y_test = y_test.data.get()
             x_t = x_test.data.get()
             for i in range(testsize):
-                tmp = (np.clip(x_t[i]*127.5 + 127.5,0,255)).transpose(1,2,0).astype(np.uint8)
+                tmp = (np.clip(x_t[i]*127.5 + 127.5, 0, 255)).transpose(1, 2, 0).astype(np.uint8)
                 pylab.subplot(testsize, 2, 2*i+1)
                 pylab.imshow(tmp)
                 pylab.axis("off")
                 pylab.savefig('%s/visualize_%d.png'%(outdir, epoch))
-                tmp = (np.clip(y_test[i]*127.5 + 127.5,0,255)).transpose(1,2,0).astype(np.uint8)
+                tmp = (np.clip(y_test[i]*127.5 + 127.5, 0, 255)).transpose(1, 2, 0).astype(np.uint8)
                 pylab.subplot(testsize, 2, 2*i+2)
                 pylab.imshow(tmp)
                 pylab.axis("off")
