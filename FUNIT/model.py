@@ -18,12 +18,10 @@ def calc_style_mean_std(feature, eps=1e-5):
 
 
 def calc_content_mean_std(feature, eps = 1e-5):
-    batch, channels, _, _ = feature.shape
-    feature_a = feature.data
-    feature_var = xp.var(feature_a.reshape(batch, channels, -1),axis = 2) + eps
-    feature_var = chainer.as_variable(feature_var)
-    feature_std = F.sqrt(feature_var).reshape(batch, channels, 1,1)
+    batch, channels, height, width = feature.shape
     feature_mean = F.mean(feature.reshape(batch, channels, -1), axis = 2)
+    feature_sigma = F.average((feature - F.tile(feature_mean.reshape(batch, channels, 1, 1), (1,1, height, width)))**2, axis=(2, 3))
+    feature_std = F.sqrt(feature_sigma).reshape(batch, channels, 1, 1)
     feature_mean = feature_mean.reshape(batch, channels, 1,1)
 
     return feature_std, feature_mean
@@ -246,9 +244,10 @@ class Discriminator(Chain):
         h = self.res6(h)
         #h = self.res7(h)
         h = F.average_pooling_2d(h, 3, 2, 1)
-        hfeat = self.res8(h)
-        h = self.c0(hfeat)
-        h = F.reshape(F.average_pooling_2d(h, (8, 8)), (h.shape[0], 5))
-        hout = self.cb(hfeat)
+        h_feat = self.res8(h)
 
-        return hfeat, hout, h
+        h_cls = self.c0(h_feat)
+        h_cls = F.reshape(F.average_pooling_2d(h_cls, (8, 8)), (h_cls.shape[0], 5))
+        h_bin = self.cb(h_feat)
+
+        return h_feat, h_bin, h_cls
