@@ -59,19 +59,19 @@ class ImageCollate():
             height, width = image.shape[0], image.shape[1]
 
             if height > width:
-                scale = 378 / width
+                scale = 513 / width
                 new_width = int(width * scale)
                 new_height = int(height * scale)
                 image = cv.resize(image, (new_width, new_height))
             
             if height <= width:
-                scale = 378 / height
+                scale = 513 / height
                 new_width = int(width * scale)
                 new_height = int(height * scale)
                 image = cv.resize(image, (new_width, new_height))
 
-            rnd1 = np.random.randint(100)
-            rnd2 = np.random.randint(100)
+            rnd1 = np.random.randint(200)
+            rnd2 = np.random.randint(200)
             image = image[rnd1: rnd1 + 256, rnd2: rnd2 + 256]
 
             height, width = image.shape[0], image.shape[1]

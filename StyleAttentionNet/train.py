@@ -108,8 +108,8 @@ if __name__ == "__main__":
     parser.add_argument('--b', default=16, type=int, help="batch size")
     parser.add_argument('--cw', default=1.0, type=float, help="the weight of content loss")
     parser.add_argument('--sw', default=3.0, type=float, help="the weight of style loss")
-    parser.add_argument('--iw1', default=1.0, type=float, help="the weight of identity loss1")
-    parser.add_argument('--iw2', default=50.0, type=float, help="the weight of identity loss2")
+    parser.add_argument('--iw1', default=50.0, type=float, help="the weight of identity loss1")
+    parser.add_argument('--iw2', default=1.0, type=float, help="the weight of identity loss2")
     parser.add_argument('--i', default=1000, type=int, help="the interval of snapshot")
 
     args = parser.parse_args()
@@ -122,7 +122,7 @@ if __name__ == "__main__":
     interval = args.i
 
     content_path = './coco2015/test2015/'
-    style_path = './Dataset/wikiart/'
+    style_path = './wikiart/'
 
     train(content_path, style_path, epochs, batchsize, interval,
           c_weight, s_weight, i1_weight, i2_weight)

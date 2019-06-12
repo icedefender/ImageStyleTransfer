@@ -57,7 +57,7 @@ def normalize(features, eps=1e-5):
     feat_standard = feat_variance.sqrt().view(batch, channels, 1, 1)
     feat_mean = features.view(batch, channels, -1).mean(dim=2).view(batch, channels, 1, 1)
 
-    normalized = (features - feat_mean.expand(size)) / feat_standard
+    normalized = (features - feat_mean.expand(size)) / feat_standard.expand(size)
 
     return normalized
 
@@ -152,7 +152,7 @@ class CBR(nn.Module):
 
         if up:
             self.cbr = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
+                nn.Upsample(scale_factor=2, mode='nearest'),
                 nn.ReflectionPad2d((1, 1, 1, 1)),
                 nn.Conv2d(in_ch, out_ch, 3),
                 #nn.InstanceNorm2d(out_ch),
@@ -212,7 +212,7 @@ class Model(nn.Module):
         self.in0 = nn.InstanceNorm2d(base)
         self.dec = Decoder()
         self.vgg = Vgg19()
-        self.up = nn.Upsample(scale_factor=2, mode='bilinear')
+        self.up = nn.Upsample(scale_factor=2, mode='nearest')
 
         self.relu = nn.ReLU()
 
@@ -222,11 +222,11 @@ class Model(nn.Module):
         c5 = self.vgg5(content)
         s5 = self.vgg5(style)
 
-        h4 = self.relu(self.c0(self.relu(self.sa4(c4, s4)) + c4))
-        h5 = self.relu(self.c1(self.relu(self.sa5(c5, s5)) + c5))
+        h4 = self.relu(self.c0(self.sa4(c4, s4)) + c4)
+        h5 = self.relu(self.c1(self.sa5(c5, s5)) + c5)
 
         h = self.c2(self.pad((h4 + self.up(h5))))
-        h = self.relu(h)
+        #h = self.relu(h)
         h = self.dec(h)
 
         h_dec = self.vgg(h)
