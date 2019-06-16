@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 
 
 class Conv(nn.Module):
@@ -33,13 +34,25 @@ class Conv(nn.Module):
         return x
 
 
+class AddGaussian(nn.Module):
+    def __init__(self):
+        super(AddGaussian, self).__init__()
+
+    def forward(self, x):
+        if self.training == False:
+            return x
+
+        noise = Variable(torch.randn(x.size()).cuda())
+        return x + noise
+
+
 class CBR(nn.Module):
-    def __init__(self, in_ch, out_ch, down=False, up=False):
+    def __init__(self, in_ch, out_ch, kernel=3, stride=1, padding=1, down=False, up=False):
         super(CBR, self).__init__()
 
         if down:
             self.cbr = nn.Sequential(
-                Conv(in_ch, out_ch, 4, 2, 1),
+                Conv(in_ch, out_ch, kernel_size=kernel, stride=stride, padding=padding),
                 nn.InstanceNorm2d(out_ch),
                 nn.ReLU()
             )
@@ -47,14 +60,14 @@ class CBR(nn.Module):
         elif up:
             self.cbr = nn.Sequential(
                 nn.Upsample(scale_factor=2, mode='bilinear'),
-                Conv(in_ch, out_ch, 3, 1, 1),
+                Conv(in_ch, out_ch, kernel_size=kernel, stride=stride, padding=padding),
                 nn.InstanceNorm2d(out_ch),
                 nn.ReLU()
             )
 
         else:
             self.cbr = nn.Sequential(
-                Conv(in_ch, out_ch, 3, 1, 1),
+                Conv(in_ch, out_ch, kernel_size=kernel, stride=stride, padding=padding),
                 nn.InstanceNorm2d(out_ch),
                 nn.ReLU()
             )
@@ -81,17 +94,49 @@ class ResBlock(nn.Module):
         return h + x
 
 
-class Encoder(nn.Module):
+class ConcatResBlock(nn.Module):
+    def __init__(self, base=256, attr_dim=256):
+        super(ConcatResBlock, self).__init__()
+
+        self.c0 = nn.Sequential(
+            Conv(base, base, 3, 1, 1),
+            nn.InstanceNorm2d(base)
+        )
+        self.c1 = nn.Sequential(
+            Conv(base, base, 3, 1, 1),
+            nn.InstanceNorm2d(base)
+        )
+        self.attr0 = nn.Sequential(
+            Conv(base + attr_dim, base + attr_dim, 1, 1, 0),
+            nn.ReLU(inplace=True),
+            Conv(base + attr_dim, base, 1, 1, 0),
+            nn.ReLU(inplace=True)
+        )
+        self.attr1 = nn.Sequential(
+            Conv(base + attr_dim, base + attr_dim, 1, 1, 0),
+            nn.ReLU(inplace=True),
+            Conv(base + attr_dim, base, 1, 1, 0),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x, z):
+        z = z.view(z.size(0), z.size(1), 1, 1).expand(z.size(0), z.size(1), x.size(2), x.size(3))
+        h = self.c0(x)
+        h = self.attr0(torch.cat([h, z], dim=1))
+        h = self.c1(h)
+        h = self.attr1(torch.cat([h, z], dim=1))
+
+        return h + x
+
+
+class ContentEncoder(nn.Module):
     def __init__(self, base=64):
-        super(Encoder, self).__init__()
+        super(ContentEncoder, self).__init__()
 
         self.enc = nn.Sequential(
-            CBR(3, base, down=True),
-            CBR(base, base*2, down=True),
-            CBR(base*2, base*4, down=True),
-            CBR(base*4, base*4, down=True),
-            ResBlock(base*4, base*4),
-            ResBlock(base*4, base*4),
+            CBR(3, base, kernel=7, stride=1, padding=3),
+            CBR(base, base*2, kernel=4, stride=2, padding=1, down=True),
+            CBR(base*2, base*4, kernel=4, stride=2, padding=1, down=True),
             ResBlock(base*4, base*4),
             ResBlock(base*4, base*4),
             ResBlock(base*4, base*4),
@@ -102,33 +147,102 @@ class Encoder(nn.Module):
         return self.enc(x)
 
 
-class Decoder(nn.Mldule):
+class AttributeEncoder(nn.Module):
+    def __init__(self, base=64):
+        super(AttributeEncoder, self).__init__()
+
+        self.enc = nn.Sequential(
+            CBR(3, base, kernel=7, stride=1, padding=3),
+            CBR(base, base*2, kernel=4, stride=2, padding=1),
+            CBR(base*2, base*4, kernel=4, stride=2, padding=1),
+            CBR(base*4, base*4, kernel=4, stride=2, padding=1),
+            CBR(base*4, base*4, kernel=4, stride=2, padding=1),
+            nn.AdaptiveAvgPool2d(1),
+            Conv(base*4, 8, 1, 1, 0)
+        )
+
+    def forward(self, x):
+        h = self.enc(x)
+        h = h.view(h.size(0), -1)
+
+        return h
+
+
+class Decoder(nn.Module):
     def __init__(self, base=64):
         super(Decoder, self).__init__()
 
-        self.dec = nn.Sequential(
-            CBR(base*8, base*4, up=True),
+        self.dec0 = ConcatResBlock()
+        self.dec1 = ConcatResBlock()
+        self.dec2 = ConcatResBlock()
+        self.dec3 = ConcatResBlock()
+
+        self.dec  = nn.Sequential(
             CBR(base*4, base*2, up=True),
             CBR(base*2, base, up=True),
-            CBR(base, base, up=True),
             Conv(base, 3, 7, 1, 3),
             nn.Tanh()
         )
 
-    def forward(self, x):
-        return self.dec(x)
+        self.mlp = nn.Sequential(
+            nn.Linear(8, base*4),
+            nn.ReLU(inplace=True),
+            nn.Linear(base*4, base*4),
+            nn.ReLU(inplace=True),
+            nn.Linear(base*4, base*16)
+        )
+
+    def forward(self, x, z):
+        z =  self.mlp(z)
+        z0, z1, z2, z3 = torch.split(z, 256, dim=1)
+        z0, z1, z2, z3 = z0.contiguous(), z1.contiguous(), z2.contiguous(), z3.contiguous()
+        h = self.dec0(x, z0)
+        h = self.dec1(h, z1)
+        h = self.dec2(h, z2)
+        h = self.dec3(h, z3)
+        h = self.dec(h)
+
+        return h
 
 
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
 
-        self.enc_x = Encoder()
-        self.enc_attr_x = Encoder()
-        self.enc_y = Encoder()
-        self.enc_attr_y = Encoder()
+        self.enc_x = ContentEncoder()
+        self.enc_attr_x = AttributeEncoder()
+        self.enc_y = ContentEncoder()
+        self.enc_attr_y = AttributeEncoder()
         self.dec_x = Decoder()
         self.dec_y = Decoder()
+
+    def _reconstruct(self, content, attr, switch='x'):
+        if switch == 'x':
+            return self.dec_x(content, attr)
+
+        else:
+            return self.dec_y(content, attr)
+
+    def _get_ramdom(self, enc, nz=8):
+        batchsize = enc.size(0)
+        z = torch.randn(batchsize, nz).cuda()
+
+        return z
+
+    def _mock_inference(self, content, switch='x'):
+        if switch == 'x':
+            latent = self._get_ramdom(content)
+            y = self.dec_y(content, latent)
+            y_attr = self.enc_attr_y(y)
+
+            return latent, y, y_attr
+
+        else:
+            latent = self._get_ramdom(content)
+            x = self.dec_x(content, latent)
+            x_attr = self.enc_attr_x(x)
+
+            return latent, x, x_attr
 
     def forward(self, a, b):
         ha = self.enc_x(a)
@@ -137,10 +251,16 @@ class Generator(nn.Module):
         hb = self.enc_y(b)
         hb_attr = self.enc_attr_y(b)
 
-        ya = self.dec_x(torch.cat([ha_attr, hb]))
-        yb = self.dec_y(torch.cat([hb_attr, ha]))
+        ya = self.dec_x(hb, ha_attr)
+        yb = self.dec_y(ha, hb_attr)
 
-        return ha, hb, ya, yb
+        recon_a = self._reconstruct(ha, ha_attr, switch='x')
+        recon_b = self._reconstruct(hb, hb_attr, switch='y')
+
+        infer_a = self._mock_inference(ha, switch='y')
+        infer_b = self._mock_inference(hb, switch='x')
+
+        return ha, hb, ha_attr, hb_attr, ya, yb, recon_a, recon_b, infer_a, infer_b
 
 
 class ContentDiscriminator(nn.Module):
@@ -148,15 +268,20 @@ class ContentDiscriminator(nn.Module):
         super(ContentDiscriminator, self).__init__()
 
         self.dis = nn.Sequential(
-            CBR(base, base, down=True),
-            CBR(base, base, down=True),
-            CBR(base, base, down=True),
-            CBR(base, base, down=True),
-            Conv(256, 1, 1, 1, 0)
+            CBR(base, base, kernel=4, stride=2, padding=1,down=True),
+            CBR(base, base, kernel=4, stride=2, padding=1,down=True),
+            CBR(base, base, kernel=4, stride=2, padding=1,down=True),
+            CBR(base, base, kernel=4, stride=1, padding=0)
         )
 
+        self.linear = nn.Linear(base, 1)
+
     def forward(self, x):
-        return self.dis(x)
+        h = self.dis(x)
+        h = h.view(h.size(0), -1)
+        h = self.linear(h)
+
+        return h
 
 
 class DomainDiscriminator(nn.Module):
@@ -164,12 +289,18 @@ class DomainDiscriminator(nn.Module):
         super(DomainDiscriminator, self).__init__()
 
         self.dis = nn.Sequential(
-            CBR(3, base, down=True),
-            CBR(base, base*2, down=True),
-            CBR(base*2, base*4, down=True),
-            CBR(base*4, base*8, down=True),
-            Conv(base*8, 1, 1, 1, 0)
+            CBR(3, base, kernel=4, stride=2, padding=1,down=True),
+            CBR(base, base*2, kernel=4, stride=2, padding=1, down=True),
+            CBR(base*2, base*4, kernel=4, stride=2, padding=1, down=True),
+            CBR(base*4, base*8, kernel=4, stride=2, padding=1, down=True),
+            CBR(base*8, base*8, kernel=4, stride=2, padding=1, down=True),
         )
 
+        self.linear = nn.Linear(base*8*4*4, 1)
+
     def forward(self, x):
-        return self.dis(x)
+        h = self.dis(x)
+        h = h.view(h.size(0), -1)
+        h = self.linear(h)
+
+        return h
