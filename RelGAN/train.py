@@ -14,11 +14,37 @@ xp = cuda.cupy
 cuda.get_device(0).use()
 
 
+def zero_centered_gradient_penalty_fake(fake, y):
+    grad, = chainer.grad([fake], [y], enable_double_backprop=True)
+    grad = F.sqrt(F.batch_l2_norm_squared(grad))
+    zeros = call_zeros(grad)
+
+    loss = 10 * F.mean_squared_error(grad, zeros)
+
+    return loss
+
+
+def zero_centered_gradient_penalty_real(discriminator, t):
+    t = chainer.Variable(t.data)
+    real = discriminator(t, y=None, label=None, method="adv")
+
+    grad, = chainer.grad([real], [t], enable_double_backprop=True)
+    grad = F.sqrt(F.batch_l2_norm_squared(grad))
+    zeros = call_zeros(grad)
+
+    loss = 10 * F.mean_squared_error(grad, zeros)
+
+    return loss
+
+
 def adversarial_loss_dis(discriminator, y, t):
     fake = discriminator(y, y=None, label=None, method="adv")
     real = discriminator(t, y=None, label=None, method="adv")
 
-    return F.mean(F.relu(1. - real)) + F.mean(F.relu(1. + fake))
+    loss = zero_centered_gradient_penalty_fake(fake, y)
+    loss += zero_centered_gradient_penalty_real(discriminator, t)
+
+    return F.mean(F.relu(1. - real)) + F.mean(F.relu(1. + fake)) + loss
 
 
 def adversarial_loss_gen(discriminator, y):
@@ -189,7 +215,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     data_path = Path("./face_stargan/")
-    modeldir = Path("./modeldir_hinge")
+    modeldir = Path("./modeldir_green")
     modeldir.mkdir(exist_ok=True)
 
     train(args.e, args.b, args.i, data_path, modeldir, args.n)
