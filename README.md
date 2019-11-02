@@ -20,3 +20,8 @@ Size:128×128
 [Paper](https://arxiv.org/pdf/1812.10889.pdf)
 
 ![InstaGAN](https://github.com/SerialLain3170/ImageStyleTransfer/blob/master/HairStyleTransfer/result.png)
+
+### U-GAT-IT
+[Paper](https://arxiv.org/pdf/1907.10830.pdf)
+
+![U-GAT-IT](https://github.com/SerialLain3170/ImageStyleTransfer/blob/master/UGATIT/Result.jpg)
