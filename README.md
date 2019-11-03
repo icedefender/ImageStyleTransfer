@@ -25,3 +25,8 @@ Size:128×128
 [Paper](https://arxiv.org/pdf/1907.10830.pdf)
 
 ![U-GAT-IT](https://github.com/SerialLain3170/ImageStyleTransfer/blob/master/UGATIT/Result.jpg)
+
+### RelGAN
+[Paper](https://arxiv.org/pdf/1908.07269.pdf)
+
+![RelGAN](https://github.com/SerialLain3170/ImageStyleTransfer/blob/master/RelGAN/RelGAN_result.jpg)
